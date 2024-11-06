@@ -77,6 +77,7 @@ public class Servidor {
                 if (opcion == 1) {
                     servidor.generateAndSaveKeys();
                 } else if (opcion == 2) {
+                    servidor.generateAndSaveKeys();
                     servidor.start();
                 } else {
                     System.out.println("Opción inválida. Por favor, seleccione nuevamente.");
