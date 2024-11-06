@@ -5,6 +5,8 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.net.Socket;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.io.FileInputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
@@ -32,7 +34,8 @@ public class Cliente {
     }
 
     /**
-     * Realiza el intercambio de claves usando Diffie-Hellman (DH) y establece claves compartidas para AES y HMAC.
+     * Realiza el intercambio de claves usando Diffie-Hellman (DH) y establece
+     * claves compartidas para AES y HMAC.
      */
     private void initDHKeyExchange() throws Exception {
         PublicKey serverPubKey = readServerPublicKey("publicKey.key");
@@ -58,11 +61,18 @@ public class Cliente {
      * Lee la clave pública del servidor desde un archivo.
      */
     private PublicKey readServerPublicKey(String filePath) throws Exception {
-        byte[] pubKeyBytes = new byte[1024];
-        try (FileInputStream fis = new FileInputStream(filePath)) {
-            fis.read(pubKeyBytes);
-        }
+        // byte[] pubKeyBytes = new byte[1024];
+        // try (FileInputStream fis = new FileInputStream(filePath)) {
+        // fis.read(pubKeyBytes);
+        // }
 
+        // KeyFactory keyFactory = KeyFactory.getInstance("RSA");
+        // return keyFactory.generatePublic(new X509EncodedKeySpec(pubKeyBytes));
+
+        // Lee el archivo como bytes (formato DER)
+        byte[] pubKeyBytes = Files.readAllBytes(Paths.get(filePath));
+
+        // Genera la clave pública usando X.509
         KeyFactory keyFactory = KeyFactory.getInstance("RSA");
         return keyFactory.generatePublic(new X509EncodedKeySpec(pubKeyBytes));
     }
@@ -96,7 +106,8 @@ public class Cliente {
     }
 
     /**
-     * Valida la firma del servidor y realiza el intercambio de claves Diffie-Hellman (DH).
+     * Valida la firma del servidor y realiza el intercambio de claves
+     * Diffie-Hellman (DH).
      */
     private void validateAndExchangeDHKeys(PublicKey serverPubKey) throws Exception {
         BigInteger p = (BigInteger) in.readObject();
@@ -119,8 +130,10 @@ public class Cliente {
     /**
      * Verifica la firma del servidor para autenticar el intercambio de claves DH.
      */
-    private boolean verifyServerSignature(BigInteger p, BigInteger g, BigInteger result, byte[] signature, PublicKey pubKey) throws Exception {
-        ByteBuffer buffer = ByteBuffer.allocate(p.toByteArray().length + g.toByteArray().length + result.toByteArray().length);
+    private boolean verifyServerSignature(BigInteger p, BigInteger g, BigInteger result, byte[] signature,
+            PublicKey pubKey) throws Exception {
+        ByteBuffer buffer = ByteBuffer
+                .allocate(p.toByteArray().length + g.toByteArray().length + result.toByteArray().length);
         buffer.put(p.toByteArray()).put(g.toByteArray()).put(result.toByteArray());
 
         Signature sigVerify = Signature.getInstance("SHA1withRSA");
@@ -164,7 +177,7 @@ public class Cliente {
     private void initializeIVAndSendSecureData() throws Exception {
         byte[] iv = (byte[]) in.readObject();
         System.out.println("IV recibido: " + bytesToHex(iv));
-        
+
         System.out.println("Cliente conectado al servidor en " + SERVER_ADDRESS + ":" + SERVER_PORT);
 
         Random random = new Random();
@@ -193,7 +206,8 @@ public class Cliente {
     /**
      * Envía los datos cifrados y firmados al servidor.
      */
-    private void sendEncryptedAndSignedData(byte[] uIdEncrypted, byte[] uIdHmac, byte[] packageIdEncrypted, byte[] packageIdHmac) throws Exception {
+    private void sendEncryptedAndSignedData(byte[] uIdEncrypted, byte[] uIdHmac, byte[] packageIdEncrypted,
+            byte[] packageIdHmac) throws Exception {
         out.writeObject(uIdEncrypted);
         out.writeObject(uIdHmac);
         out.writeObject(packageIdEncrypted);

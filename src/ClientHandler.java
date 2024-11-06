@@ -11,6 +11,7 @@ import java.math.BigInteger;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.security.*;
+import java.sql.Time;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -22,6 +23,8 @@ public class ClientHandler extends Thread {
     private Map<String, String> packageStatusTable;
     private ObjectOutputStream out;
     private ObjectInputStream in;
+    private long tiempoReto;
+    private long tiempoDH;
 
     // Constructor de la clase
     public ClientHandler(Socket socket, KeyPair rsaKeyPair, Map<String, String> packageStatusTable) {
@@ -50,7 +53,8 @@ public class ClientHandler extends Thread {
     }
 
     /**
-     * Establece la clave de sesión mediante un intercambio de claves Diffie-Hellman y RSA.
+     * Establece la clave de sesión mediante un intercambio de claves Diffie-Hellman
+     * y RSA.
      */
     private void establishSessionKey() throws Exception {
         PrivateKey serverPriKey = rsaKeyPair.getPrivate();
@@ -59,17 +63,20 @@ public class ClientHandler extends Thread {
         String palabra = (String) in.readObject();
         System.out.println(palabra);
 
+        long tiempoRetoInit = System.currentTimeMillis();
         // Leer y descifrar el reto recibido del cliente
         byte[] retoCifrado = (byte[]) in.readObject();
         String mensajeDescifrado = decryptRSA(retoCifrado, serverPriKey);
         System.out.println("Reto descifrado: " + mensajeDescifrado);
-
+        long tiempoRetoFin = System.currentTimeMillis();
+        tiempoReto = tiempoRetoFin - tiempoRetoInit;
         // Enviar el reto descifrado de vuelta al cliente
         out.writeObject(mensajeDescifrado);
 
         // Leer respuesta del cliente
         String respuesta = (String) in.readObject();
         if ("OK".equals(respuesta)) {
+            long tiempoDHInit = System.currentTimeMillis();
             // Proceso de generación y envío de parámetros Diffie-Hellman (P y G)
             BigInteger[] dhParameters = generateDHParameters();
             BigInteger p = dhParameters[0];
@@ -78,6 +85,8 @@ public class ClientHandler extends Thread {
             // Generación y envío del valor público del servidor G^x mod P
             BigInteger x = generateRandomExponent(p);
             BigInteger result = g.modPow(x, p);
+            long tiempoDHFin = System.currentTimeMillis();
+            tiempoDH = tiempoDHFin - tiempoDHInit;
             out.writeObject(p);
             out.writeObject(g);
             out.writeObject(result);
@@ -153,7 +162,7 @@ public class ClientHandler extends Thread {
         BigInteger p = pMatcher.find() ? new BigInteger(pMatcher.group(1).replaceAll("[:\\s]", ""), 16) : null;
         BigInteger g = gMatcher.find() ? new BigInteger(gMatcher.group(1)) : null;
 
-        return new BigInteger[]{p, g};
+        return new BigInteger[] { p, g };
     }
 
     /**
@@ -173,8 +182,10 @@ public class ClientHandler extends Thread {
     /**
      * Genera y envía una firma digital usando SHA1 con RSA.
      */
-    private void sendDigitalSignature(BigInteger p, BigInteger g, BigInteger result, PrivateKey privateKey) throws Exception {
-        byte[] messageBytes = ByteBuffer.allocate(p.toByteArray().length + g.toByteArray().length + result.toByteArray().length)
+    private void sendDigitalSignature(BigInteger p, BigInteger g, BigInteger result, PrivateKey privateKey)
+            throws Exception {
+        byte[] messageBytes = ByteBuffer
+                .allocate(p.toByteArray().length + g.toByteArray().length + result.toByteArray().length)
                 .put(p.toByteArray()).put(g.toByteArray()).put(result.toByteArray()).array();
 
         Signature signature = Signature.getInstance("SHA1withRSA");
@@ -213,6 +224,7 @@ public class ClientHandler extends Thread {
         byte[] paqueteIdCifradoAES = (byte[]) in.readObject();
         byte[] paqueteIdCifradoHMAC = (byte[]) in.readObject();
 
+        long tiempoVeriConsulInit = System.currentTimeMillis();
         Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         aesCipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(encryptionKey, "AES"), new IvParameterSpec(iv));
         byte[] decryptedUId = aesCipher.doFinal(uIdCifradoAES);
@@ -220,7 +232,9 @@ public class ClientHandler extends Thread {
 
         boolean isHMACValidForUId = verifyHMAC(decryptedUId, hmacKey, uIdCifradoHMAC);
         boolean isHMACValidForPaqueteId = verifyHMAC(decryptedPaqueteId, hmacKey, paqueteIdCifradoHMAC);
+        long tiempoVeriConsulFin = System.currentTimeMillis();
 
+        
         if (isHMACValidForUId && isHMACValidForPaqueteId) {
             String response = processRequest(new String(decryptedPaqueteId));
             aesCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(encryptionKey, "AES"), new IvParameterSpec(iv));
@@ -270,4 +284,3 @@ public class ClientHandler extends Thread {
         return packageStatusTable.getOrDefault(request, "DESCONOCIDO");
     }
 }
-
