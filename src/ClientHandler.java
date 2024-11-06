@@ -1,5 +1,6 @@
 import javax.crypto.Cipher;
 import javax.crypto.Mac;
+import javax.crypto.NoSuchPaddingException;
 import javax.crypto.spec.SecretKeySpec;
 import javax.crypto.spec.IvParameterSpec;
 
@@ -20,11 +21,15 @@ public class ClientHandler extends Thread {
 
     private Socket clientSocket;
     private KeyPair rsaKeyPair;
+    private PrivateKey serverPriKey;
     private Map<String, String> packageStatusTable;
     private ObjectOutputStream out;
     private ObjectInputStream in;
     private long tiempoReto;
     private long tiempoDH;
+    private long tiempoVeriConsul;
+    private long timepoCifraSimetrico;
+    private long timepoCifraAsimetrico;
 
     // Constructor de la clase
     public ClientHandler(Socket socket, KeyPair rsaKeyPair, Map<String, String> packageStatusTable) {
@@ -57,18 +62,18 @@ public class ClientHandler extends Thread {
      * y RSA.
      */
     private void establishSessionKey() throws Exception {
-        PrivateKey serverPriKey = rsaKeyPair.getPrivate();
+        serverPriKey = rsaKeyPair.getPrivate();
 
         // Leer y mostrar la palabra enviada por el cliente
         String palabra = (String) in.readObject();
         System.out.println(palabra);
 
-        long tiempoRetoInit = System.currentTimeMillis();
+        long tiempoRetoInit = System.nanoTime();
         // Leer y descifrar el reto recibido del cliente
         byte[] retoCifrado = (byte[]) in.readObject();
         String mensajeDescifrado = decryptRSA(retoCifrado, serverPriKey);
         System.out.println("Reto descifrado: " + mensajeDescifrado);
-        long tiempoRetoFin = System.currentTimeMillis();
+        long tiempoRetoFin = System.nanoTime();
         tiempoReto = tiempoRetoFin - tiempoRetoInit;
         // Enviar el reto descifrado de vuelta al cliente
         out.writeObject(mensajeDescifrado);
@@ -76,7 +81,7 @@ public class ClientHandler extends Thread {
         // Leer respuesta del cliente
         String respuesta = (String) in.readObject();
         if ("OK".equals(respuesta)) {
-            long tiempoDHInit = System.currentTimeMillis();
+            long tiempoDHInit = System.nanoTime();
             // Proceso de generación y envío de parámetros Diffie-Hellman (P y G)
             BigInteger[] dhParameters = generateDHParameters();
             BigInteger p = dhParameters[0];
@@ -85,7 +90,7 @@ public class ClientHandler extends Thread {
             // Generación y envío del valor público del servidor G^x mod P
             BigInteger x = generateRandomExponent(p);
             BigInteger result = g.modPow(x, p);
-            long tiempoDHFin = System.currentTimeMillis();
+            long tiempoDHFin = System.nanoTime();
             tiempoDH = tiempoDHFin - tiempoDHInit;
             out.writeObject(p);
             out.writeObject(g);
@@ -119,6 +124,12 @@ public class ClientHandler extends Thread {
                 processEncryptedRequest(encryptionKey, hmacKey, iv);
                 String fin = (String) in.readObject();
                 System.out.println(fin);
+                System.out.println("------------------Tiempos-----------------");
+                System.out.println("Reto: " + tiempoReto);
+                System.out.println("DH: " + tiempoDH);
+                System.out.println("Consulta: " + tiempoVeriConsul);
+                System.out.println("Simetrico: " + timepoCifraSimetrico);
+                System.out.println("Asimetrico: " + timepoCifraAsimetrico);
             } else {
                 System.out.println("Error en la verificación de la firma enviada.");
             }
@@ -224,7 +235,7 @@ public class ClientHandler extends Thread {
         byte[] paqueteIdCifradoAES = (byte[]) in.readObject();
         byte[] paqueteIdCifradoHMAC = (byte[]) in.readObject();
 
-        long tiempoVeriConsulInit = System.currentTimeMillis();
+        long tiempoVeriConsulInit = System.nanoTime();
         Cipher aesCipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
         aesCipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(encryptionKey, "AES"), new IvParameterSpec(iv));
         byte[] decryptedUId = aesCipher.doFinal(uIdCifradoAES);
@@ -232,21 +243,34 @@ public class ClientHandler extends Thread {
 
         boolean isHMACValidForUId = verifyHMAC(decryptedUId, hmacKey, uIdCifradoHMAC);
         boolean isHMACValidForPaqueteId = verifyHMAC(decryptedPaqueteId, hmacKey, paqueteIdCifradoHMAC);
-        long tiempoVeriConsulFin = System.currentTimeMillis();
+        long tiempoVeriConsulFin = System.nanoTime();
+        tiempoVeriConsul = tiempoVeriConsulFin - tiempoVeriConsulInit;
 
-        
         if (isHMACValidForUId && isHMACValidForPaqueteId) {
             String response = processRequest(new String(decryptedPaqueteId));
+            long tiempoCifraSimetricoInit = System.nanoTime();
             aesCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(encryptionKey, "AES"), new IvParameterSpec(iv));
             byte[] encryptedResponse = aesCipher.doFinal(response.getBytes());
+            long tiempoCifraSimetricoFin = System.nanoTime();
+            timepoCifraSimetrico = tiempoCifraSimetricoFin - tiempoCifraSimetricoInit;
             Mac hmac = Mac.getInstance("HmacSHA384");
             hmac.init(new SecretKeySpec(hmacKey, "HmacSHA384"));
             byte[] hmacValue = hmac.doFinal(response.getBytes());
             out.writeObject(encryptedResponse);
             out.writeObject(hmacValue);
+            calculoCifraAsimetrico(response);
         } else {
             throw new SecurityException("El HMAC no coincide, los datos pueden haber sido modificados.");
         }
+    }
+
+    private void calculoCifraAsimetrico(String response) throws Exception{
+        long tiempoCifraAsimetricoInit = System.nanoTime();
+        Cipher aesCipher = Cipher.getInstance("RSA");
+        aesCipher.init(Cipher.ENCRYPT_MODE, serverPriKey);
+        aesCipher.doFinal(response.getBytes());
+        long tiempoCifraAsimetricoFin = System.nanoTime();
+        timepoCifraAsimetrico = tiempoCifraAsimetricoFin - tiempoCifraAsimetricoInit;
     }
 
     /**
