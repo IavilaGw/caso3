@@ -46,6 +46,9 @@ public class ClientHandler extends Thread {
             this.in = new ObjectInputStream(clientSocket.getInputStream());
 
             establishSessionKey();
+
+            this.out.close();
+            this.in.close();
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
@@ -121,15 +124,16 @@ public class ClientHandler extends Thread {
                 out.writeObject(iv);
 
                 // Procesar solicitud cifrada del cliente y verificar su integridad
-                processEncryptedRequest(encryptionKey, hmacKey, iv);
-                String fin = (String) in.readObject();
-                System.out.println(fin);
-                System.out.println("------------------Tiempos-----------------");
+                String uid = processEncryptedRequest(encryptionKey, hmacKey, iv);
+                System.out.println("\n------------------Tiempos de consulta "+ uid +"-----------------");
                 System.out.println("Reto: " + tiempoReto);
                 System.out.println("DH: " + tiempoDH);
                 System.out.println("Consulta: " + tiempoVeriConsul);
                 System.out.println("Simetrico: " + timepoCifraSimetrico);
-                System.out.println("Asimetrico: " + timepoCifraAsimetrico);
+                System.out.println("Asimetrico: " + timepoCifraAsimetrico + "\n");
+                
+                String fin = (String) in.readObject();
+                System.out.println(fin);
             } else {
                 System.out.println("Error en la verificación de la firma enviada.");
             }
@@ -229,7 +233,7 @@ public class ClientHandler extends Thread {
     /**
      * Procesa la solicitud cifrada del cliente y verifica HMAC.
      */
-    private void processEncryptedRequest(byte[] encryptionKey, byte[] hmacKey, byte[] iv) throws Exception {
+    private String processEncryptedRequest(byte[] encryptionKey, byte[] hmacKey, byte[] iv) throws Exception {
         byte[] uIdCifradoAES = (byte[]) in.readObject();
         byte[] uIdCifradoHMAC = (byte[]) in.readObject();
         byte[] paqueteIdCifradoAES = (byte[]) in.readObject();
@@ -243,10 +247,10 @@ public class ClientHandler extends Thread {
 
         boolean isHMACValidForUId = verifyHMAC(decryptedUId, hmacKey, uIdCifradoHMAC);
         boolean isHMACValidForPaqueteId = verifyHMAC(decryptedPaqueteId, hmacKey, paqueteIdCifradoHMAC);
-        long tiempoVeriConsulFin = System.nanoTime();
-        tiempoVeriConsul = tiempoVeriConsulFin - tiempoVeriConsulInit;
-
+        
         if (isHMACValidForUId && isHMACValidForPaqueteId) {
+            long tiempoVeriConsulFin = System.nanoTime();
+            tiempoVeriConsul = tiempoVeriConsulFin - tiempoVeriConsulInit;
             String response = processRequest(new String(decryptedPaqueteId));
             long tiempoCifraSimetricoInit = System.nanoTime();
             aesCipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(encryptionKey, "AES"), new IvParameterSpec(iv));
@@ -256,9 +260,10 @@ public class ClientHandler extends Thread {
             Mac hmac = Mac.getInstance("HmacSHA384");
             hmac.init(new SecretKeySpec(hmacKey, "HmacSHA384"));
             byte[] hmacValue = hmac.doFinal(response.getBytes());
+            calculoCifraAsimetrico(response);
             out.writeObject(encryptedResponse);
             out.writeObject(hmacValue);
-            calculoCifraAsimetrico(response);
+            return new String(decryptedUId);
         } else {
             throw new SecurityException("El HMAC no coincide, los datos pueden haber sido modificados.");
         }

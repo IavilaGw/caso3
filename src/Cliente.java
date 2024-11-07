@@ -15,10 +15,8 @@ import java.security.spec.X509EncodedKeySpec;
 import java.util.Random;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
-import java.math.BigInteger;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-
+import java.math.BigInteger;
 
 public class Cliente {
 
@@ -29,11 +27,13 @@ public class Cliente {
     private ObjectInputStream in;
     private SecretKey aesKey;
     private Mac hmac;
+    private Integer uid;
 
     public Cliente() throws Exception {
         this.socket = new Socket(SERVER_ADDRESS, SERVER_PORT);
         this.out = new ObjectOutputStream(socket.getOutputStream());
         this.in = new ObjectInputStream(socket.getInputStream());
+        this.uid = 0;
 
         initDHKeyExchange();
     }
@@ -186,12 +186,11 @@ public class Cliente {
         System.out.println("Cliente conectado al servidor en " + SERVER_ADDRESS + ":" + SERVER_PORT);
 
         Random random = new Random();
-        String uId = String.valueOf(random.nextInt(10));
         String packageId = "00" + random.nextInt(1, 8);
 
-        byte[] uIdEncrypted = encryptWithAES(uId.getBytes(), iv);
-        byte[] uIdHmac = hmac.doFinal(uId.getBytes());
-
+        byte[] uIdEncrypted = encryptWithAES(uid.toString().getBytes(), iv);
+        byte[] uIdHmac = hmac.doFinal(uid.toString().getBytes());
+        uid += 1;
         byte[] packageIdEncrypted = encryptWithAES(packageId.getBytes(), iv);
         byte[] packageIdHmac = hmac.doFinal(packageId.getBytes());
 
@@ -246,17 +245,65 @@ public class Cliente {
             System.err.println("Error en la consulta: HMAC no coincide.");
             return;
         }
+        System.out.println("Respuesta del servidor: " + new String(decryptedResponse) + "\n");
         String fin = "TERMINAR";
         out.writeObject(fin);
-        System.out.println("Respuesta del servidor: " + new String(decryptedResponse));
     }
 
-     public static void main(String[] args) {
+    public static void main(String[] args) {
+        Scanner scanner = new Scanner(System.in);
+
+        // Mostrar opciones al usuario
+        System.out.println("Seleccione el escenario a ejecutar:");
+        System.out.println("1. Escenario 1: Crear cliente en un bucle con retraso.");
+        System.out.println("2. Escenario 2: Ejecutar clientes delegados en un pool de hilos.");
+        System.out.println("3. Cliente normal");
+        System.out.print("Opción: ");
+        int opcion = scanner.nextInt();
+
         try {
-            Scanner scanner = new Scanner(System.in);
+            switch (opcion) {
+                case 1:
+                    mainEscenario1();
+                    break;
+                case 2:
+                    mainEscenario2();
+                    break;
+                case 3:
+                    Cliente cliente = new Cliente();
+                    cliente.initializeIVAndSendSecureData();
+                    cliente.in.close();
+                    cliente.out.close();
+                    break;
+                default:
+                    System.out.println("Opción no válida.");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            scanner.close();
+        }
+    }
+
+    public static void mainEscenario1() {
+        try {
+            for (int i = 0; i < 32; i++) {
+                Cliente cliente = new Cliente();
+                cliente.initializeIVAndSendSecureData();
+                cliente.in.close();
+                cliente.out.close();
+                Thread.sleep(3000); // Retraso de 3 segundos
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public static void mainEscenario2() {
+        Scanner scanner = new Scanner(System.in);
+        try {
             System.out.println("Seleccione el número de delegados para el cliente (4, 8, o 32): ");
             int numDelegados = scanner.nextInt();
-            scanner.close();
 
             ExecutorService executor = Executors.newFixedThreadPool(numDelegados);
 
@@ -275,6 +322,8 @@ public class Cliente {
             executor.shutdown();
         } catch (Exception e) {
             e.printStackTrace();
+        } finally {
+            scanner.close();
         }
     }
 }

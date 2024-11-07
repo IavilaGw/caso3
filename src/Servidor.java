@@ -61,13 +61,34 @@ public class Servidor {
 
     public static void main(String[] args) {
         try {
-            Scanner scanner = new Scanner(System.in);
-            System.out.println("Seleccione el número de delegados para el servidor (4, 8, o 32): ");
-            int numDelegados = scanner.nextInt();
-            scanner.close();
-
             Servidor servidor = new Servidor();
-            servidor.start(numDelegados);
+            Scanner scanner = new Scanner(System.in);
+
+            while (true) {
+                System.out.println("Menú del Servidor:");
+                System.out.println("1. Generar llaves RSA y guardarlas en archivos");
+                System.out.println("2. Iniciar servidor (prueba escenario 1)");
+                System.out.println("3. Prueba escenario 2");
+                System.out.print("Seleccione una opción: ");
+
+                int opcion = scanner.nextInt();
+
+                if (opcion == 1) {
+                    servidor.generateAndSaveKeys();
+                } else if (opcion == 2) {
+                    servidor.start(1);
+                } else if (opcion == 3) {
+                    System.out.println("Seleccione el número de delegados para el servidor (4, 8, o 32): ");
+                    int numDelegados = scanner.nextInt();
+                    scanner.close();
+                    servidor.start(numDelegados);
+                } else {
+                    System.out.println("Opción inválida. Por favor, seleccione nuevamente.");
+                }
+            }
+            
+
+            
         } catch (Exception e) {
             e.printStackTrace();
         }
