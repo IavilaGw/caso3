@@ -13,7 +13,12 @@ import java.io.ObjectOutputStream;
 import java.security.*;
 import java.security.spec.X509EncodedKeySpec;
 import java.util.Random;
+import java.util.Scanner;
+import java.util.concurrent.ExecutorService;
 import java.math.BigInteger;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
 
 public class Cliente {
 
@@ -246,10 +251,28 @@ public class Cliente {
         System.out.println("Respuesta del servidor: " + new String(decryptedResponse));
     }
 
-    public static void main(String[] args) {
+     public static void main(String[] args) {
         try {
-            Cliente cliente = new Cliente();
-            cliente.initializeIVAndSendSecureData();
+            Scanner scanner = new Scanner(System.in);
+            System.out.println("Seleccione el número de delegados para el cliente (4, 8, o 32): ");
+            int numDelegados = scanner.nextInt();
+            scanner.close();
+
+            ExecutorService executor = Executors.newFixedThreadPool(numDelegados);
+
+            for (int i = 0; i < numDelegados; i++) {
+                executor.execute(() -> {
+                    try {
+                        Cliente cliente = new Cliente();
+                        cliente.initializeIVAndSendSecureData();
+                    } catch (Exception e) {
+                        System.err.println("Error en la conexión del cliente delegado.");
+                        e.printStackTrace();
+                    }
+                });
+            }
+
+            executor.shutdown();
         } catch (Exception e) {
             e.printStackTrace();
         }

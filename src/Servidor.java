@@ -1,16 +1,13 @@
 import java.net.ServerSocket;
 import java.net.Socket;
-import javax.crypto.Cipher;
-import javax.crypto.KeyAgreement;
-import javax.crypto.Mac;
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.io.*;
-import java.security.*;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.Scanner;
+import java.util.Map;
+import java.util.HashMap;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.io.FileOutputStream;
 
 public class Servidor {
 
@@ -21,31 +18,20 @@ public class Servidor {
     public Servidor() throws Exception {
         packageStatusTable = new HashMap<>();
         initPackageStatusTable();
+        generateAndSaveKeys();
     }
 
     private void initPackageStatusTable() {
         packageStatusTable.put("001", "ENOFICINA");
         packageStatusTable.put("002", "RECOGIDO");
         packageStatusTable.put("003", "ENENTREGA");
-        packageStatusTable.put("004","ENCLASIFICADO");
-        packageStatusTable.put("005","DESPACHADO");
-        packageStatusTable.put("006","ENTREGADO");
-        packageStatusTable.put("007","DESCONOCIDO");
-    }
-
-    public void start() throws Exception {
-        ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
-        System.out.println("Servidor iniciado en el puerto " + SERVER_PORT);
-
-        while (true) {
-            Socket clientSocket = serverSocket.accept();
-            System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
-            new Thread(new ClientHandler(clientSocket, rsaKeyPair, packageStatusTable)).start();
-        }
+        packageStatusTable.put("004", "ENCLASIFICADO");
+        packageStatusTable.put("005", "DESPACHADO");
+        packageStatusTable.put("006", "ENTREGADO");
+        packageStatusTable.put("007", "DESCONOCIDO");
     }
 
     private void generateAndSaveKeys() throws Exception {
-
         KeyPairGenerator keyPairGen = KeyPairGenerator.getInstance("RSA");
         keyPairGen.initialize(1024);
         rsaKeyPair = keyPairGen.generateKeyPair();
@@ -59,36 +45,31 @@ public class Servidor {
         }
 
         System.out.println("Llaves RSA generadas y guardadas en archivos.");
-        System.out.println("La llave pública está en 'publicKey.key' y la llave privada en 'privateKey.key'.");
+    }
+
+    public void start(int numDelegados) throws Exception {
+        ServerSocket serverSocket = new ServerSocket(SERVER_PORT);
+        ExecutorService pool = Executors.newFixedThreadPool(numDelegados);
+        System.out.println("Servidor iniciado en el puerto " + SERVER_PORT);
+
+        while (true) {
+            Socket clientSocket = serverSocket.accept();
+            System.out.println("Cliente conectado: " + clientSocket.getInetAddress());
+            pool.execute(new ClientHandler(clientSocket, rsaKeyPair, packageStatusTable)); 
+        }
     }
 
     public static void main(String[] args) {
         try {
-            Servidor servidor = new Servidor();
             Scanner scanner = new Scanner(System.in);
+            System.out.println("Seleccione el número de delegados para el servidor (4, 8, o 32): ");
+            int numDelegados = scanner.nextInt();
+            scanner.close();
 
-            while (true) {
-                System.out.println("Menú del Servidor:");
-                System.out.println("1. Generar llaves RSA y guardarlas en archivos");
-                System.out.println("2. Iniciar servidor");
-                System.out.print("Seleccione una opción: ");
-                int opcion = scanner.nextInt();
-
-                if (opcion == 1) {
-                    servidor.generateAndSaveKeys();
-                } else if (opcion == 2) {
-                    servidor.generateAndSaveKeys();
-                    servidor.start();
-                } else {
-                    System.out.println("Opción inválida. Por favor, seleccione nuevamente.");
-                }
-            }
-
+            Servidor servidor = new Servidor();
+            servidor.start(numDelegados);
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
 }
-
-
-
